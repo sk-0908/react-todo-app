@@ -1,6 +1,6 @@
 import React from "react";
 import { Todo } from "./types";
-import TodoItem from "./todoItem"; // ◀◀ 追加
+import TodoItem from "./TodoItem"; // ◀◀ 追加
 
 type Props = {
   todos: Todo[];
