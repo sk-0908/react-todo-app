@@ -13,18 +13,27 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
+// Todoの型
+
+interface FormState {
+  name: string;
+  priority: number;
+  deadline: Date | null;
+}
+
 type Toast = {
   id: string;
   message: string;
   type: "success" | "error" | "info";
 };
 
-const initialFormState = {
+const initialFormState: FormState = {
   name: "",
   priority: 3,
-  deadline: null as Date | null,
+  deadline: null,
 };
 
+// バリデーション関数
 const validateForm = (name: string) => {
   const errors: { [key: string]: string } = {};
   if (name.length < 2 || name.length > 32) {
@@ -38,37 +47,55 @@ const App = () => {
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [formState, setFormState] = useState(initialFormState);
+  const [formState, setFormState] = useState<FormState>(initialFormState);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const localStorageKey = "TodoApp";
 
+  // トースト表示
   const showToast = useCallback(
     (message: string, type: Toast["type"] = "info") => {
-      const newToast = {
-        id: uuid(),
-        message,
-        type,
-      };
+      const newToast = { id: uuid(), message, type };
       setToasts((prev) => [...prev, newToast]);
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((toast) => toast.id !== newToast.id));
-      }, 3000);
+      setTimeout(
+        () =>
+          setToasts((prev) => prev.filter((toast) => toast.id !== newToast.id)),
+        3000
+      );
     },
     []
   );
 
+  // トースト削除
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
+  // ダークモード切り替え
   const toggleDarkMode = useCallback(() => {
     setIsDarkMode((prev) => !prev);
   }, []);
 
+  // Todoのソート処理
+  useEffect(() => {
+    const sortedTodos = [...todos].sort((a, b) => {
+      // 期限がある場合は期限順でソート
+      if (a.deadline && b.deadline) {
+        return a.deadline < b.deadline ? -1 : 1;
+      }
+      if (a.deadline) return -1;
+      if (b.deadline) return 1;
+
+      // 期限がない場合は優先度順でソート
+      return a.priority - b.priority;
+    });
+
+    setTodos(sortedTodos);
+  }, [todos]);
+
+  // ローカルストレージからTodosを読み込む
   useEffect(() => {
     const loadTodos = async () => {
       try {
@@ -85,23 +112,26 @@ const App = () => {
         showToast("データの読み込みに失敗しました", "error");
       } finally {
         setIsLoading(false);
-        setInitialized(true);
       }
     };
+
     loadTodos();
   }, [showToast]);
 
+  // TodosをlocalStorageに保存
   useEffect(() => {
-    if (initialized) {
+    if (todos.length > 0) {
       localStorage.setItem(localStorageKey, JSON.stringify(todos));
     }
-  }, [todos, initialized]);
+  }, [todos]);
 
+  // 未完了タスク数の算出
   const uncompletedCount = useMemo(
-    () => todos.filter((todo: Todo) => !todo.isDone).length,
+    () => todos.filter((todo) => !todo.isDone).length,
     [todos]
   );
 
+  // 入力変更ハンドラ
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const { name, value, type } = e.target;
@@ -117,7 +147,18 @@ const App = () => {
     },
     []
   );
-
+  // セレクト変更ハンドラ（選択肢選択用）
+  const handleSelectChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const { name, value } = e.target;
+      setFormState((prev) => ({
+        ...prev,
+        [name]: Number(value), // 優先度は数値として扱うため、Number()で変換
+      }));
+    },
+    []
+  );
+  // 期限変更ハンドラ
   const handleDeadlineChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const dt = e.target.value;
@@ -129,6 +170,7 @@ const App = () => {
     []
   );
 
+  // 新しいタスクの追加
   const addNewTodo = useCallback(() => {
     const errors = validateForm(formState.name);
     if (Object.keys(errors).length > 0) {
@@ -150,12 +192,14 @@ const App = () => {
     showToast("新しいタスクを追加しました", "success");
   }, [formState, showToast]);
 
+  // 完了状態の更新
   const updateIsDone = useCallback((id: string, value: boolean) => {
     setTodos((prev) =>
       prev.map((todo) => (todo.id === id ? { ...todo, isDone: value } : todo))
     );
   }, []);
 
+  // タスクの削除
   const remove = useCallback(
     (id: string) => {
       setTodos((prev) => prev.filter((todo) => todo.id !== id));
@@ -164,6 +208,7 @@ const App = () => {
     [showToast]
   );
 
+  // 完了済みタスクの削除
   const removeCompletedTodos = useCallback(() => {
     setTodos((prev) => prev.filter((todo) => !todo.isDone));
     showToast("完了済みのタスクを削除しました", "info");
@@ -176,15 +221,15 @@ const App = () => {
       </div>
     );
   }
-
   const containerClasses = twMerge(
     "min-h-screen w-full bg-white transition-colors duration-200",
-    isDarkMode && "bg-gray-900"
+    isDarkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
   );
 
   return (
     <div className={containerClasses}>
       <div className="mx-4 mt-10 max-w-2xl md:mx-auto">
+        {/* トースト通知 */}
         <div className="fixed bottom-4 right-4 z-50 space-y-2">
           {toasts.map((toast) => (
             <div
@@ -215,161 +260,79 @@ const App = () => {
           </h1>
           <button
             onClick={toggleDarkMode}
-            className={`rounded-full p-2 ${
-              isDarkMode
-                ? "text-white hover:bg-gray-700"
-                : "text-gray-900 hover:bg-gray-200"
-            }`}
-            aria-label={
-              isDarkMode ? "ライトモードに切り替え" : "ダークモードに切り替え"
-            }
+            className={`rounded-full p-2 ${isDarkMode ? "text-white hover:bg-gray-700" : "text-gray-900 hover:bg-gray-300"}`}
           >
-            <FontAwesomeIcon
-              icon={isDarkMode ? faSun : faMoon}
-              className="size-5"
-            />
+            <FontAwesomeIcon icon={isDarkMode ? faSun : faMoon} />
           </button>
         </div>
 
+        {/* Todoリストの追加フォーム */}
         <div className="mb-4">
-          <WelcomeMessage
-            name="寝屋川タヌキ"
-            uncompletedCount={uncompletedCount}
-          />
-        </div>
-
-        <TodoList
-          todos={todos}
-          updateIsDone={updateIsDone}
-          remove={remove}
-          //isDarkMode={isDarkMode}
-        />
-
-        <div
-          className={`mt-5 space-y-2 rounded-md border p-3 ${
-            isDarkMode
-              ? "border-gray-700 bg-gray-800"
-              : "border-gray-200 bg-white"
-          }`}
-        >
-          <h2
-            className={`text-lg font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
-          >
-            新しいタスクの追加
-          </h2>
-
-          <div>
-            <div className="flex items-center space-x-2">
-              <label
-                className={`font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
-                htmlFor="name"
-              >
-                名前
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                value={formState.name}
-                onChange={handleInputChange}
-                className={twMerge(
-                  "grow rounded-md border p-2",
-                  isDarkMode
-                    ? "bg-gray-700 text-white border-gray-600"
-                    : "bg-white text-gray-900 border-gray-300",
-                  formErrors.name && "border-red-500 outline-red-500"
-                )}
-                placeholder="2文字以上、32文字以内で入力してください"
-                aria-invalid={!!formErrors.name}
-                aria-describedby={formErrors.name ? "name-error" : undefined}
-              />
-            </div>
+          <div className="mb-2">
+            <input
+              type="text"
+              name="name"
+              value={formState.name}
+              onChange={handleInputChange}
+              className={`w-full rounded-md border px-4 py-2 ${
+                formErrors.name ? "border-red-500" : "border-gray-300"
+              }`}
+              placeholder="タスク名"
+            />
             {formErrors.name && (
-              <div
-                id="name-error"
-                className="ml-10 flex items-center space-x-1 text-sm font-bold text-red-500"
-              >
-                <FontAwesomeIcon
-                  icon={faTriangleExclamation}
-                  className="mr-0.5"
-                />
-                <div>{formErrors.name}</div>
-              </div>
+              <p className="text-sm text-red-500">{formErrors.name}</p>
             )}
           </div>
 
-          <div className="flex gap-5">
-            <div
-              className={`font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
+          <div className="mb-2 flex">
+            <select
+              name="priority"
+              value={formState.priority}
+              onChange={handleSelectChange}
+              className="mr-2 rounded-md border border-gray-300 px-4 py-2"
             >
-              優先度
-            </div>
-            {[1, 2, 3, 4, 5].map((value) => (
-              <label
-                key={value}
-                className={`flex items-center space-x-1 ${isDarkMode ? "text-white" : "text-gray-900"}`}
-              >
-                <input
-                  id={`priority-${value}`}
-                  name="priority"
-                  type="radio"
-                  value={value}
-                  checked={formState.priority === value}
-                  onChange={handleInputChange}
-                  className={isDarkMode ? "text-blue-400" : "text-blue-600"}
-                />
-                <span>{value}</span>
-              </label>
-            ))}
-          </div>
+              <option value={1}>優先度 1</option>
+              <option value={2}>優先度 2</option>
+              <option value={3}>優先度 3</option>
+            </select>
 
-          <div className="flex items-center gap-x-2">
-            <label
-              htmlFor="deadline"
-              className={`font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
-            >
-              期限
-            </label>
             <input
-              type="datetime-local"
-              id="deadline"
+              type="date"
               name="deadline"
               value={
                 formState.deadline
-                  ? dayjs(formState.deadline).format("YYYY-MM-DDTHH:mm:ss")
+                  ? dayjs(formState.deadline).format("YYYY-MM-DD")
                   : ""
               }
               onChange={handleDeadlineChange}
-              className={`rounded-md border px-2 py-0.5 ${
-                isDarkMode
-                  ? "border-gray-600 bg-gray-700 text-white"
-                  : "border-gray-300 bg-white text-gray-900"
-              }`}
+              className="rounded-md border border-gray-300 px-4 py-2"
             />
           </div>
 
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={addNewTodo}
-              disabled={!!formErrors.name}
-              className={twMerge(
-                "w-full rounded-md bg-indigo-500 px-3 py-1 font-bold text-white transition-colors hover:bg-indigo-600",
-                (formErrors.name || !formState.name) &&
-                  "cursor-not-allowed opacity-50"
-              )}
-            >
-              追加
-            </button>
+          <button
+            onClick={addNewTodo}
+            className="w-full rounded-md bg-blue-500 py-2 text-white hover:bg-blue-700"
+          >
+            タスクを追加
+          </button>
+        </div>
 
-            <button
-              type="button"
-              onClick={removeCompletedTodos}
-              className="w-full rounded-md bg-red-500 px-3 py-1 font-bold text-white transition-colors hover:bg-red-600"
-            >
-              完了済みのタスクを削除
-            </button>
-          </div>
+        {/* Todoリスト */}
+        <TodoList todos={todos} updateIsDone={updateIsDone} remove={remove} />
+
+        {/* 完了済みタスクの削除 */}
+        {todos.some((todo) => todo.isDone) && (
+          <button
+            onClick={removeCompletedTodos}
+            className="mt-4 w-full rounded-md bg-red-500 py-2 text-white hover:bg-red-700"
+          >
+            完了済みタスクを削除
+          </button>
+        )}
+
+        {/* 未完了タスク数 */}
+        <div className="mt-4 text-lg font-semibold text-gray-800">
+          残りタスク数: {uncompletedCount}
         </div>
       </div>
     </div>
