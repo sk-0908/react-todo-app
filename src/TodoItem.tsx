@@ -31,5 +31,4 @@ const TodoItem = (props: Props) => {
     </div>
   );
 };
-
 export default TodoItem;
