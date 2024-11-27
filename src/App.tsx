@@ -242,7 +242,7 @@ const App = () => {
           todos={todos}
           updateIsDone={updateIsDone}
           remove={remove}
-          isDarkMode={isDarkMode}
+          //isDarkMode={isDarkMode}
         />
 
         <div
